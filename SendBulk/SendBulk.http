@@ -1,0 +1,6 @@
+@SendBulk_HostAddress = http://localhost:5083
+
+GET {{SendBulk_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
