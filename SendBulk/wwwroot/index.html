@@ -1,0 +1,808 @@
+﻿<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ترنج نت - پیامک انبوه</title>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/rastikerdar/sahel-font@v3.4.0/dist/font-face.css');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Sahel', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f6fa;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .progress-bar {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            gap: 20px;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            background: rgba(0, 0, 0, 0.1);
+            color: #333;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+            .step.active {
+                background: #007bff;
+                color: white;
+            }
+
+            .step.completed {
+                background: #28a745;
+                color: white;
+            }
+
+        .step-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .step.active .step-number {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .step.completed .step-number {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+            .panel.disabled {
+                opacity: 0.5;
+                pointer-events: none;
+            }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            font-family: 'Sahel', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+            input[type="text"]:focus, textarea:focus {
+                outline: none;
+                border-color: #007bff;
+            }
+
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+            input[type="text"]::placeholder, textarea::placeholder {
+                font-family: 'Sahel', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+
+        .char-counter {
+            text-align: left;
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .sms-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 5px;
+            font-size: 12px;
+            color: #333;
+        }
+
+        .phone-container {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 10px;
+            min-height: 100px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .phone-tag {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 5px 10px;
+            margin: 2px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+            .phone-tag .remove-btn {
+                background: none;
+                border: none;
+                color: white;
+                margin-left: 5px;
+                cursor: pointer;
+                font-size: 14px;
+            }
+
+        .phone-input {
+            border: none;
+            outline: none;
+            padding: 8px;
+            width: 200px;
+            font-size: 14px;
+            font-family: 'Sahel', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+            .phone-input::placeholder {
+                font-family: 'Sahel', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Sahel', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .btn-test {
+            background: #17a2b8;
+            color: white;
+        }
+
+            .btn-test:hover {
+                background: #138496;
+            }
+
+        .btn-check {
+            background: #28a745;
+            color: white;
+        }
+
+            .btn-check:hover {
+                background: #218838;
+            }
+
+            .btn-check:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+            }
+
+        .btn-send {
+            background: #dc3545;
+            color: white;
+        }
+
+            .btn-send:hover {
+                background: #c82333;
+            }
+
+        .btn-back {
+            background: #6c757d;
+            color: white;
+        }
+
+            .btn-back:hover {
+                background: #5a6268;
+            }
+
+        .error {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .success {
+            color: #28a745;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .analysis-result {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .analysis-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+            .analysis-item:last-child {
+                border-bottom: none;
+            }
+
+        .total-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid #007bff;
+            text-align: center;
+        }
+
+        .total-sms {
+            font-size: 18px;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+            .close:hover {
+                color: black;
+            }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .btn-modal {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Sahel', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .btn-recharge {
+            background: #28a745;
+            color: white;
+        }
+
+            .btn-recharge:hover {
+                background: #218838;
+            }
+
+        .btn-close {
+            background: #6c757d;
+            color: white;
+        }
+
+            .btn-close:hover {
+                background: #5a6268;
+            }
+
+        .btn-ok {
+            background: #007bff;
+            color: white;
+        }
+
+            .btn-ok:hover {
+                background: #0056b3;
+            }
+
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+        }
+
+        .loading-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="progress-bar">
+            <div class="step active" id="step1">
+                <div class="step-number">1</div>
+                <span>تنظیمات پیام</span>
+            </div>
+            <div class="step" id="step2">
+                <div class="step-number">2</div>
+                <span>بررسی نهایی</span>
+            </div>
+        </div>
+
+        <div class="panel" id="panel1">
+            <div class="form-group">
+                <label for="title">عنوان پیام (قابل مشاهده فقط برای ادمین):</label>
+                <input type="text" id="title" placeholder="مثال: پیام تبلیغاتی محصول جدید">
+                <div class="error" id="titleError"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="message">متن پیامک:</label>
+                <textarea id="message" placeholder="متن پیامک خود را وارد کنید... (حتماً کلمه لغو11 یا لغو 11 را در متن قرار دهید)"></textarea>
+                <div class="char-counter" id="charCounter">0 کاراکتر</div>
+                <div class="sms-info" id="smsInfo">تعداد صفحات: 1 پیامک</div>
+                <div class="error" id="messageError"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="phones">شماره همراه‌ها (با , یا Enter جدا کنید):</label>
+                <div class="phone-container" id="phoneContainer">
+                    <input type="text" class="phone-input" id="phoneInput" placeholder="شماره همراه را وارد کنید...">
+                </div>
+                <div class="error" id="phoneError"></div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-test" onclick="sendTest()">ارسال تست</button>
+                <button class="btn btn-check" id="checkBtn" onclick="checkNumbers()" disabled>بررسی</button>
+            </div>
+        </div>
+
+        <div class="panel disabled" id="panel2">
+            <div class="analysis-result" id="analysisResult">
+                <div class="analysis-item">
+                    <span>تعداد شماره صحیح:</span>
+                    <span id="correctCount">0</span>
+                </div>
+                <div class="analysis-item">
+                    <span>تعداد شماره اشتباه:</span>
+                    <span id="incorrectCount">0</span>
+                </div>
+                <div class="analysis-item">
+                    <span>تعداد شماره تکراری:</span>
+                    <span id="duplicateCount">0</span>
+                </div>
+                <div class="total-section">
+                    <div class="total-sms" id="totalSms">تعداد کل پیامک: 0</div>
+                    <div style="margin-top: 10px; display: flex; gap: 15px; justify-content: center;">
+                        <button class="btn btn-back" onclick="goBack()">بازگشت</button>
+                        <button class="btn btn-send" onclick="sendBulkSMS()">ارسال</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <div>در حال ارسال...</div>
+        </div>
+    </div>
+
+    <script>
+        let phoneNumbers = [];
+        let testPassed = false;
+        let userBalance = 1000;
+        let smsPrice = 150;
+        const apiBaseUrl = window.location.origin + '/api/sms';
+
+        // Event listeners
+        document.getElementById('message').addEventListener('input', function() {
+            updateCharCounter();
+            resetTestStatus();
+        });
+        document.getElementById('phoneInput').addEventListener('keydown', handlePhoneInput);
+        document.getElementById('title').addEventListener('input', resetTestStatus);
+
+        function resetTestStatus() {
+            testPassed = false;
+            document.getElementById('checkBtn').disabled = true;
+            document.getElementById('messageError').textContent = '';
+            document.getElementById('titleError').textContent = '';
+            document.getElementById('phoneError').textContent = '';
+        }
+
+        function updateCharCounter() {
+            const message = document.getElementById('message').value;
+            const charCount = message.length;
+            const charCounter = document.getElementById('charCounter');
+            const smsInfo = document.getElementById('smsInfo');
+
+            charCounter.textContent = charCount + ' کاراکتر';
+
+            let pages;
+            if (charCount <= 70) {
+                pages = 1;
+            } else {
+                pages = Math.ceil((charCount - 70) / 67) + 1;
+            }
+
+            if (pages > 8) {
+                pages = 8;
+                charCounter.style.color = '#dc3545';
+                smsInfo.style.color = '#dc3545';
+            } else {
+                charCounter.style.color = '#666';
+                smsInfo.style.color = '#333';
+            }
+
+            smsInfo.textContent = `تعداد صفحات: ${pages} پیامک`;
+        }
+
+        function handlePhoneInput(e) {
+            const input = e.target;
+            const value = input.value.trim();
+
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                if (value) {
+                    addPhoneNumber(value);
+                    input.value = '';
+                }
+            }
+        }
+
+        function addPhoneNumber(number) {
+            const cleanNumber = number.replace(/[^\d]/g, '');
+
+            if (cleanNumber) {
+                phoneNumbers.push(cleanNumber);
+                renderPhoneNumbers();
+                resetTestStatus();
+
+                setTimeout(() => {
+                    document.getElementById('phoneInput').focus();
+                }, 10);
+            }
+        }
+
+        function renderPhoneNumbers() {
+            const container = document.getElementById('phoneContainer');
+            const input = document.getElementById('phoneInput');
+
+            container.innerHTML = '';
+
+            phoneNumbers.forEach((number, index) => {
+                const tag = document.createElement('div');
+                tag.className = 'phone-tag';
+                tag.innerHTML = `
+                    ${number}
+                    <button class="remove-btn" onclick="removePhone(${index})">×</button>
+                `;
+                container.appendChild(tag);
+            });
+
+            container.appendChild(input);
+            input.focus();
+        }
+
+        function removePhone(index) {
+            phoneNumbers.splice(index, 1);
+            renderPhoneNumbers();
+            resetTestStatus();
+
+            setTimeout(() => {
+                document.getElementById('phoneInput').focus();
+            }, 10);
+        }
+
+        function validateFields() {
+            const title = document.getElementById('title').value.trim();
+            const message = document.getElementById('message').value.trim();
+            const titleError = document.getElementById('titleError');
+            const messageError = document.getElementById('messageError');
+            const phoneError = document.getElementById('phoneError');
+
+            let isValid = true;
+
+            if (!title) {
+                titleError.textContent = 'لطفاً عنوان پیام را وارد کنید';
+                isValid = false;
+            } else {
+                titleError.textContent = '';
+            }
+
+            if (!message) {
+                messageError.textContent = 'لطفاً متن پیام را وارد کنید';
+                isValid = false;
+            } else {
+                messageError.textContent = '';
+            }
+
+            if (phoneNumbers.length === 0) {
+                phoneError.textContent = 'لطفاً حداقل یک شماره تلفن وارد کنید';
+                isValid = false;
+            } else {
+                phoneError.textContent = '';
+            }
+
+            return isValid;
+        }
+
+        function sendTest() {
+            if (!validateFields()) {
+                return;
+            }
+
+            const message = document.getElementById('message').value;
+            const messageError = document.getElementById('messageError');
+
+            if (!message.includes('لغو11') && !message.includes('لغو 11')) {
+                messageError.textContent = 'خطا: کلمه "لغو11" یا "لغو 11" در متن پیام وجود ندارد';
+                return;
+            }
+
+            const charCount = message.length;
+            let pages;
+            if (charCount <= 70) {
+                pages = 1;
+            } else {
+                pages = Math.ceil((charCount - 70) / 67) + 1;
+            }
+
+            if (pages > 8) {
+                messageError.textContent = 'خطا: پیام بیش از 8 صفحه است';
+                return;
+            }
+
+            messageError.textContent = '';
+            testPassed = true;
+            document.getElementById('checkBtn').disabled = false;
+
+            showModal('تست با موفقیت انجام شد! پیام به شماره ادمین ارسال شد.');
+        }
+
+        function checkNumbers() {
+            if (!testPassed) return;
+
+            if (!validateFields()) {
+                return;
+            }
+
+            const message = document.getElementById('message').value;
+            const charCount = message.length;
+
+            let pagesPerSMS = charCount <= 70 ? 1 : Math.ceil((charCount - 70) / 67) + 1;
+
+            const numberCount = {};
+            const incorrectNumbers = [];
+            let duplicateCount = 0;
+
+            phoneNumbers.forEach(number => {
+                numberCount[number] = (numberCount[number] || 0) + 1;
+
+                if (!(number.length === 11 && number.startsWith('09'))) {
+                    if (!incorrectNumbers.includes(number)) {
+                        incorrectNumbers.push(number);
+                    }
+                }
+            });
+
+            const correctNumbers = Object.keys(numberCount).filter(
+                number => number.length === 11 && number.startsWith('09')
+            );
+
+            Object.values(numberCount).forEach(count => {
+                if (count > 1) {
+                    duplicateCount += (count - 1);
+                }
+            });
+
+            const totalSMSNeeded = correctNumbers.length * pagesPerSMS;
+            const totalCost = totalSMSNeeded * smsPrice;
+
+            if (userBalance < totalCost) {
+                const availablePages = Math.floor(userBalance / smsPrice);
+                showBalanceModal(`موجودی کافی نیست.<br>موجودی فعلی: ${availablePages} صفحه پیامک.<br>برای بررسی، ${totalSMSNeeded} صفحه پیامک مورد نیاز است.`);
+                return;
+            }
+
+            document.getElementById('correctCount').textContent = correctNumbers.length;
+            document.getElementById('incorrectCount').textContent = incorrectNumbers.length;
+            document.getElementById('duplicateCount').textContent = duplicateCount;
+            document.getElementById('totalSms').textContent = `تعداد کل پیامک: ${totalSMSNeeded}`;
+
+            document.getElementById('step1').classList.remove('active');
+            document.getElementById('step1').classList.add('completed');
+            document.getElementById('step2').classList.add('active');
+
+            document.getElementById('panel1').classList.add('disabled');
+            document.getElementById('panel2').classList.remove('disabled');
+            document.getElementById('analysisResult').style.display = 'block';
+        }
+
+        async function sendBulkSMS() {
+            const title = document.getElementById('title').value.trim();
+            const message = document.getElementById('message').value.trim();
+            const numbersString = phoneNumbers.join(',');
+
+            // نمایش loading
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        message: message,
+                        numbers: numbersString
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showSuccessModal(`پیامک با موفقیت ارسال شد!<br>تعداد شماره‌های ارسال شده: ${result.sentTo.length}<br>وضعیت: ${result.response.includes('success') ? 'موفق' : 'ارسال شده'}`);
+                } else {
+                    showModal(`خطا در ارسال پیامک:<br>${result.error || 'خطای نامشخص'}`);
+                }
+            } catch (error) {
+                showModal(`خطا در ارسال پیامک:<br>${error.message}`);
+            } finally {
+                // مخفی کردن loading
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function goBack() {
+            document.getElementById('step1').classList.remove('completed');
+            document.getElementById('step1').classList.add('active');
+            document.getElementById('step2').classList.remove('active');
+
+            document.getElementById('panel1').classList.remove('disabled');
+            document.getElementById('panel2').classList.add('disabled');
+            document.getElementById('analysisResult').style.display = 'none';
+        }
+
+        function showModal(content) {
+            document.getElementById('modalContent').innerHTML = content;
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        function showBalanceModal(content) {
+            document.getElementById('modalContent').innerHTML = `
+                <div>${content}</div>
+                <div class="modal-buttons">
+                    <button class="btn-modal btn-recharge">افزایش موجودی</button>
+                    <button class="btn-modal btn-close" onclick="closeModal()">بستن</button>
+                </div>
+            `;
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        function showSuccessModal(content) {
+            document.getElementById('modalContent').innerHTML = `
+                <div>${content}</div>
+                <div class="modal-buttons">
+                    <button class="btn-modal btn-ok" onclick="refreshPage()">اوکی</button>
+                </div>
+            `;
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        function refreshPage() {
+            window.location.reload();
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('modal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
