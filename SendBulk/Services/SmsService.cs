@@ -1,8 +1,11 @@
 ﻿using Microsoft.Extensions.Options;
 using SendBulk.Models;
+using SendBulk.Models.Request;
+using SendBulk.Models.Response;
 using System.Runtime;
 using System.ServiceModel;
 using System.Text;
+using System.Text.Json;
 
 namespace SendBulk.Services
 {
@@ -17,6 +20,38 @@ namespace SendBulk.Services
             _httpClient = new HttpClient();
         }
 
+        // Get Credit
+        public async Task<SmsCreditResponse> GetCreditAsync()
+        {
+            var request = new SmsCreditRequest
+            {
+                Username = _settings.Username,
+                Password = _settings.Password
+            };
+
+            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("https://rest.payamak-panel.com/api/SendSMS/GetCredit", content);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception("دریافت موجودی با خطا مواجه شد.");
+            }
+
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<SmsCreditResponse>(responseContent);
+
+            if (result != null && decimal.TryParse(result.Value, out var decimalValue))
+            {
+                result.Value = Math.Round(decimalValue, 2).ToString("0.00"); // نمایش با 2 رقم اعشار
+            }
+
+
+            return result ?? new SmsCreditResponse { RetStatus = -1, StrRetStatus = "خطا در تبدیل پاسخ" };
+        }
+
+
+
+        // Send To Numbers
         public async Task<(string response, string[] cleanedNumbers)> SendToNumbersAsync(string title, string message, string numbersRaw)
         {
             var numbers = numbersRaw

@@ -402,10 +402,99 @@
                 transform: rotate(360deg);
             }
         }
+
+        .user-balance-card {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: linear-gradient(135deg, #d3d3d3 0%, #fdfdfd 100%);
+            color: #000;
+            padding: 15px 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            z-index: 100;
+            min-width: 200px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+            .user-balance-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+            }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .user-name {
+            font-size: 14px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+            .user-name::before {
+                content: "👤";
+                font-size: 16px;
+            }
+
+        .user-balance {
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            opacity: 0.9;
+        }
+
+            .user-balance::before {
+                content: "💳";
+                font-size: 14px;
+            }
+
+        .balance-number {
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+        }
+
+        /* برای صفحات کوچک */
+        @media (max-width: 768px) {
+            .user-balance-card {
+                top: 10px;
+                left: 10px;
+                padding: 10px 15px;
+                min-width: 150px;
+            }
+
+            .user-name {
+                font-size: 12px;
+            }
+
+            .user-balance {
+                font-size: 11px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
+
+        <!-- کادر نمایش یوزر و موجودی -->
+        <div class="user-balance-card">
+            <div class="user-info">
+                <div class="user-name" id="userName">کاربر</div>
+                <div class="user-balance">
+                    موجودی: <span class="balance-number" id="userBalanceDisplay">0</span> پیامک
+                </div>
+            </div>
+        </div>
+
         <div class="progress-bar">
             <div class="step active" id="step1">
                 <div class="step-number">1</div>
@@ -534,6 +623,29 @@
 
             smsInfo.textContent = `تعداد صفحات: ${pages} پیامک`;
         }
+
+        async function fetchUserInfo() {
+            try {
+                const response = await fetch('/api/sms/user/info');
+
+                if (!response.ok) {
+                    throw new Error('دریافت اطلاعات کاربر با خطا مواجه شد');
+                }
+
+                const data = await response.json();
+
+                // نمایش اطلاعات در کادر
+                document.getElementById('userName').textContent = data.name;
+                document.getElementById('userBalanceDisplay').textContent = data.balance;
+            } catch (error) {
+                console.error('خطا در دریافت اطلاعات کاربر:', error);
+                // در صورت نیاز نمایش پیغام خطا در UI
+                document.getElementById('userBalanceDisplay').textContent = 'خطا';
+            }
+        }
+
+        // فراخوانی هنگام بارگذاری صفحه
+        window.addEventListener('DOMContentLoaded', fetchUserInfo);
 
         function handlePhoneInput(e) {
             const input = e.target;
