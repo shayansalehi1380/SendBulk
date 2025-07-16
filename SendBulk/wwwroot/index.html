@@ -515,7 +515,7 @@
 
             <div class="form-group">
                 <label for="message">متن پیامک:</label>
-                <textarea id="message" placeholder="متن پیامک خود را وارد کنید... (حتماً کلمه لغو11 یا لغو 11 را در متن قرار دهید)"></textarea>
+                <textarea id="message" placeholder="متن پیامک خود را وارد کنید... (حتماً کلمه لغو11 یا لغو 11 را در پایان متن قرار دهید)"></textarea>
                 <div class="char-counter" id="charCounter">0 کاراکتر</div>
                 <div class="sms-info" id="smsInfo">تعداد صفحات: 1 پیامک</div>
                 <div class="error" id="messageError"></div>
@@ -737,26 +737,22 @@
             return isValid;
         }
 
-        function sendTest() {
-            if (!validateFields()) {
-                return;
-            }
+        async function sendTest() {
+            if (!validateFields()) return;
 
-            const message = document.getElementById('message').value;
+            const title = document.getElementById('title').value.trim();
+            const message = document.getElementById('message').value.trim();
             const messageError = document.getElementById('messageError');
 
-            if (!message.includes('لغو11') && !message.includes('لغو 11')) {
-                messageError.textContent = 'خطا: کلمه "لغو11" یا "لغو 11" در متن پیام وجود ندارد';
+            // بررسی وجود لغو11 در انتهای پیام
+            if (!/(لغو ?11)$/.test(message)) {
+                messageError.textContent = 'خطا: کلمه "لغو11" یا "لغو 11" باید در انتهای پیام باشد';
                 return;
             }
 
+            // بررسی تعداد صفحات پیام
             const charCount = message.length;
-            let pages;
-            if (charCount <= 70) {
-                pages = 1;
-            } else {
-                pages = Math.ceil((charCount - 70) / 67) + 1;
-            }
+            const pages = charCount <= 70 ? 1 : Math.ceil((charCount - 70) / 67) + 1;
 
             if (pages > 8) {
                 messageError.textContent = 'خطا: پیام بیش از 8 صفحه است';
@@ -764,11 +760,36 @@
             }
 
             messageError.textContent = '';
-            testPassed = true;
-            document.getElementById('checkBtn').disabled = false;
 
-            showModal('تست با موفقیت انجام شد! پیام به شماره ادمین ارسال شد.');
+            // ارسال به بک‌اند
+            try {
+                const response = await fetch('/api/sms/send', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        message: message,
+                        numbers: "09015538133" // شماره تست
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    showModal(`خطا در ارسال تست: ${error}`);
+                    return;
+                }
+
+                const result = await response.text(); // یا response.json() اگر بک‌اند JSON برمی‌گردونه
+                testPassed = true;
+                document.getElementById('checkBtn').disabled = false;
+                showModal('ارسال تست با موفقیت انجام شد. پیام به شماره ادمین ارسال شد!');
+            } catch (error) {
+                showModal('خطا در ارسال تست: ' + error.message);
+            }
         }
+
 
         function checkNumbers() {
             if (!testPassed) return;
@@ -834,6 +855,16 @@
             const message = document.getElementById('message').value.trim();
             const numbersString = phoneNumbers.join(',');
 
+            // محاسبه تعداد شماره‌های صحیح و یکتا
+            const numberCount = {};
+            phoneNumbers.forEach(number => {
+                numberCount[number] = (numberCount[number] || 0) + 1;
+            });
+
+            const correctNumbers = Object.keys(numberCount).filter(
+                number => number.length === 11 && number.startsWith('09')
+            );
+
             // نمایش loading
             document.getElementById('loading').style.display = 'block';
 
@@ -853,7 +884,7 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    showSuccessModal(`پیامک با موفقیت ارسال شد!<br>تعداد شماره‌های ارسال شده: ${result.sentTo.length}<br>وضعیت: ${result.response.includes('success') ? 'موفق' : 'ارسال شده'}`);
+                    showSuccessModal(`پیامک با موفقیت ارسال شد!<br>تعداد شماره‌های ارسال شده: ${correctNumbers.length}<br>وضعیت: ${result.response.includes('success') ? 'موفق' : 'ارسال شده'}`);
                 } else {
                     showModal(`خطا در ارسال پیامک:<br>${result.error || 'خطای نامشخص'}`);
                 }

@@ -6,6 +6,7 @@ using System.Runtime;
 using System.ServiceModel;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace SendBulk.Services
 {
@@ -94,6 +95,68 @@ namespace SendBulk.Services
             return (resultContent, numbers);
         }
 
+        public async Task<string> AddNumberBulkAsync(AddNumberBulkRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Title))
+                throw new ArgumentException("عنوان پیام نباید خالی باشد.");
+
+            if (string.IsNullOrWhiteSpace(request.Message))
+                throw new ArgumentException("متن پیام نباید خالی باشد.");
+
+            if (!Regex.IsMatch(request.Message, @"لغو ?11$"))
+                throw new ArgumentException("عبارت 'لغو11' یا 'لغو 11' باید در انتهای پیام باشد.");
+
+            int charCount = request.Message.Length;
+            int pages = charCount <= 70 ? 1 : (int)Math.Ceiling((charCount - 70) / 67.0) + 1;
+            if (pages > 8)
+                throw new ArgumentException("تعداد صفحات پیام بیش از حد مجاز (8 صفحه) است.");
+
+            if (string.IsNullOrWhiteSpace(request.Receivers))
+                throw new ArgumentException("لیست شماره‌ها نباید خالی باشد.");
+
+            var numbers = request.Receivers.Split(',').Select(n => n.Trim()).Where(n => !string.IsNullOrEmpty(n)).ToList();
+
+            if (numbers.Count == 0)
+                throw new ArgumentException("هیچ شماره‌ای یافت نشد.");
+
+            var invalidNumbers = numbers.Where(n => n.Length != 11 || !n.StartsWith("09") || !Regex.IsMatch(n, @"^\d{11}$")).ToList();
+            if (invalidNumbers.Any())
+                throw new ArgumentException("برخی شماره‌ها نامعتبر هستند: " + string.Join(", ", invalidNumbers));
+
+            // حذف شماره‌های تکراری
+            numbers = numbers.Distinct().ToList();
+
+            var receivers = string.Join(",", numbers);
+
+            var dateToSend = string.IsNullOrWhiteSpace(request.DateToSend)
+                ? DateTime.Now.AddMinutes(1).ToString("yyyy/MM/dd HH:mm")
+                : request.DateToSend;
+
+            var soapEnvelope = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<soap:Envelope xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance""
+               xmlns:xsd=""http://www.w3.org/2001/XMLSchema""
+               xmlns:soap=""http://schemas.xmlsoap.org/soap/envelope/"">
+  <soap:Body>
+    <AddNumberBulk xmlns=""http://tempuri.org/"">
+      <username>{System.Security.SecurityElement.Escape(_settings.Username)}</username>
+      <password>{System.Security.SecurityElement.Escape(_settings.Password)}</password>
+      <from>{System.Security.SecurityElement.Escape(_settings.From)}</from>
+      <title>{System.Security.SecurityElement.Escape(request.Title)}</title>
+      <message>{System.Security.SecurityElement.Escape(request.Message)}</message>
+      <receivers>{System.Security.SecurityElement.Escape(receivers)}</receivers>
+      <DateToSend>{System.Security.SecurityElement.Escape(dateToSend)}</DateToSend>
+    </AddNumberBulk>
+  </soap:Body>
+</soap:Envelope>";
+
+            var content = new StringContent(soapEnvelope, Encoding.UTF8, "text/xml");
+            content.Headers.Add("SOAPAction", "\"http://tempuri.org/AddNumberBulk\"");
+
+            var response = await _httpClient.PostAsync("http://api.payamak-panel.com/post/newbulks.asmx", content);
+            response.EnsureSuccessStatusCode();
+
+            return await response.Content.ReadAsStringAsync();
+        }
 
     }
 }
