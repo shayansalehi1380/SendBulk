@@ -95,6 +95,7 @@ namespace SendBulk.Services
             return (resultContent, numbers);
         }
 
+
         public async Task<string> AddNumberBulkAsync(AddNumberBulkRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Title))
@@ -119,14 +120,16 @@ namespace SendBulk.Services
             if (numbers.Count == 0)
                 throw new ArgumentException("هیچ شماره‌ای یافت نشد.");
 
-            var invalidNumbers = numbers.Where(n => n.Length != 11 || !n.StartsWith("09") || !Regex.IsMatch(n, @"^\d{11}$")).ToList();
-            if (invalidNumbers.Any())
-                throw new ArgumentException("برخی شماره‌ها نامعتبر هستند: " + string.Join(", ", invalidNumbers));
+            // شناسایی شماره‌های صحیح
+            var validNumbers = numbers.Where(n => n.Length == 11 && n.StartsWith("09") && Regex.IsMatch(n, @"^\d{11}$")).ToList();
 
-            // حذف شماره‌های تکراری
-            numbers = numbers.Distinct().ToList();
+            // بررسی حداقل 10 شماره صحیح
+            if (validNumbers.Count < 10)
+                throw new ArgumentException($"حداقل 10 شماره صحیح مورد نیاز است. تعداد شماره‌های صحیح وارد شده: {validNumbers.Count}");
 
-            var receivers = string.Join(",", numbers);
+            // حذف تکراری‌ها از شماره‌های صحیح
+            validNumbers = validNumbers.Distinct().ToList();
+            var receivers = string.Join(",", validNumbers);
 
             var dateToSend = string.IsNullOrWhiteSpace(request.DateToSend)
                 ? DateTime.Now.AddMinutes(1).ToString("yyyy/MM/dd HH:mm")
@@ -152,10 +155,39 @@ namespace SendBulk.Services
             var content = new StringContent(soapEnvelope, Encoding.UTF8, "text/xml");
             content.Headers.Add("SOAPAction", "\"http://tempuri.org/AddNumberBulk\"");
 
-            var response = await _httpClient.PostAsync("http://api.payamak-panel.com/post/newbulks.asmx", content);
-            response.EnsureSuccessStatusCode();
+            // استفاده از HTTPS (در صورت پشتیبانی)
+            var url = "https://api.payamak-panel.com/post/newbulks.asmx";
 
-            return await response.Content.ReadAsStringAsync();
+            try
+            {
+                var response = await _httpClient.PostAsync(url, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                // استخراج نتیجه از XML
+                var match = Regex.Match(responseContent, @"<AddNumberBulkResult>(\d+)</AddNumberBulkResult>");
+                var resultCode = match.Success ? match.Groups[1].Value : "NoMatch";
+
+                // لاگ کامل برای بررسی وضعیت
+                Console.WriteLine("===== SMS BULK SEND LOG =====");
+                Console.WriteLine($"Title: {request.Title}");
+                Console.WriteLine($"Message: {request.Message}");
+                Console.WriteLine($"Total Numbers Input: {numbers.Count}");
+                Console.WriteLine($"Valid Numbers Count: {validNumbers.Count}");
+                Console.WriteLine($"Receivers: {receivers}");
+                Console.WriteLine($"DateToSend: {dateToSend}");
+                Console.WriteLine($"HTTP Status Code: {(int)response.StatusCode} {response.StatusCode}");
+                Console.WriteLine($"Raw XML Response:\n{responseContent}");
+                Console.WriteLine($"Parsed Result Code: {resultCode}");
+                Console.WriteLine("==============================");
+
+                return responseContent;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("خطا در ارسال پیام SOAP:");
+                Console.WriteLine(ex.ToString());
+                throw;
+            }
         }
 
     }

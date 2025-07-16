@@ -65,10 +65,10 @@ namespace SendBulk.Controllers
 
 
         /// <summary>
-        /// Send Bulk (ارسال انبوه)
+        /// SendMultipleSMS (ارسال چندتایی)
         /// </summary>
         /// <param name="request"></param>
-        /// <returns>Send Bulk (ارسال انبوه)</returns>
+        /// <returns>SendMultipleSMS (ارسال چندتایی)</returns>
         [HttpPost("send")]
         public async Task<IActionResult> Send([FromBody] DirectSmsRequest request)
         {
@@ -87,6 +87,11 @@ namespace SendBulk.Controllers
             }
         }
 
+        /// <summary>
+        /// Send Bulk (ارسال انبوه)
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns>Send Bulk (ارسال انبوه)</returns>
         [HttpPost("add-bulk")]
         public async Task<ActionResult<AddNumberBulkResponse>> AddNumberBulk([FromBody] AddNumberBulkRequest request)
         {

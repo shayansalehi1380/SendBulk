@@ -577,12 +577,12 @@
     <script>
         let phoneNumbers = [];
         let testPassed = false;
-        let userBalance = 1000;
-        let smsPrice = 150;
+        let userBalance = 0; // موجودی واقعی از API دریافت می‌شود
+        let smsPrice = 150; // قیمت ثابت هر صفحه پیامک
         const apiBaseUrl = window.location.origin + '/api/sms';
 
         // Event listeners
-        document.getElementById('message').addEventListener('input', function() {
+        document.getElementById('message').addEventListener('input', function () {
             updateCharCounter();
             resetTestStatus();
         });
@@ -634,12 +634,16 @@
 
                 const data = await response.json();
 
-                // نمایش اطلاعات در کادر
+                // بروزرسانی موجودی واقعی (تعداد صفحه پیامک)
+                userBalance = parseInt(data.balance) || 0; // فرض بر این که API موجودی را برحسب تعداد صفحه پیامک ارسال می‌کند
+
+                // نمایش موجودی فقط به صورت تعداد صفحه پیامک
                 document.getElementById('userName').textContent = data.name;
-                document.getElementById('userBalanceDisplay').textContent = data.balance;
+                document.getElementById('userBalanceDisplay').textContent = `${userBalance} صفحه پیامک`;
             } catch (error) {
                 console.error('خطا در دریافت اطلاعات کاربر:', error);
-                // در صورت نیاز نمایش پیغام خطا در UI
+                // در صورت خطا، موجودی را صفر قرار می‌دهیم
+                userBalance = 0;
                 document.getElementById('userBalanceDisplay').textContent = 'خطا';
             }
         }
@@ -704,6 +708,13 @@
             }, 10);
         }
 
+        // بررسی تعداد شماره‌های صحیح
+        function getValidNumbersCount() {
+            return phoneNumbers.filter(number =>
+                number.length === 11 && number.startsWith('09') && /^\d{11}$/.test(number)
+            ).length;
+        }
+
         function validateFields() {
             const title = document.getElementById('title').value.trim();
             const message = document.getElementById('message').value.trim();
@@ -731,7 +742,14 @@
                 phoneError.textContent = 'لطفاً حداقل یک شماره تلفن وارد کنید';
                 isValid = false;
             } else {
-                phoneError.textContent = '';
+                // بررسی حداقل 10 شماره صحیح
+                const validCount = getValidNumbersCount();
+                if (validCount < 10) {
+                    phoneError.textContent = `حداقل 10 شماره صحیح مورد نیاز است. تعداد شماره‌های صحیح فعلی: ${validCount}`;
+                    isValid = false;
+                } else {
+                    phoneError.textContent = '';
+                }
             }
 
             return isValid;
@@ -775,21 +793,19 @@
                     })
                 });
 
-                if (!response.ok) {
-                    const error = await response.text();
-                    showModal(`خطا در ارسال تست: ${error}`);
-                    return;
-                }
+                const result = await response.text(); // اگر endpoint تست فقط text برمی‌گردونه
 
-                const result = await response.text(); // یا response.json() اگر بک‌اند JSON برمی‌گردونه
-                testPassed = true;
-                document.getElementById('checkBtn').disabled = false;
-                showModal('ارسال تست با موفقیت انجام شد. پیام به شماره ادمین ارسال شد!');
+                if (response.ok) {
+                    testPassed = true;
+                    document.getElementById('checkBtn').disabled = false;
+                    showModal('ارسال تست با موفقیت انجام شد. پیام به شماره ادمین ارسال شد!');
+                } else {
+                    showModal(`خطا در ارسال تست: ${result}`);
+                }
             } catch (error) {
                 showModal('خطا در ارسال تست: ' + error.message);
             }
         }
-
 
         function checkNumbers() {
             if (!testPassed) return;
@@ -828,11 +844,10 @@
             });
 
             const totalSMSNeeded = correctNumbers.length * pagesPerSMS;
-            const totalCost = totalSMSNeeded * smsPrice;
 
-            if (userBalance < totalCost) {
-                const availablePages = Math.floor(userBalance / smsPrice);
-                showBalanceModal(`موجودی کافی نیست.<br>موجودی فعلی: ${availablePages} صفحه پیامک.<br>برای بررسی، ${totalSMSNeeded} صفحه پیامک مورد نیاز است.`);
+            // بررسی موجودی واقعی به تعداد صفحه پیامک
+            if (userBalance < totalSMSNeeded) {
+                showBalanceModal(`موجودی کافی نیست.<br>موجودی فعلی: ${userBalance} صفحه پیامک.<br>برای ارسال، ${totalSMSNeeded} صفحه پیامک مورد نیاز است.`);
                 return;
             }
 
@@ -865,11 +880,21 @@
                 number => number.length === 11 && number.startsWith('09')
             );
 
+            // ساخت تاریخ و زمان فعلی به فرمت مطلوب
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const currentDateTime = `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+
             // نمایش loading
             document.getElementById('loading').style.display = 'block';
 
             try {
-                const response = await fetch(`${apiBaseUrl}/send`, {
+                const response = await fetch(`${apiBaseUrl}/add-bulk`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -877,16 +902,25 @@
                     body: JSON.stringify({
                         title: title,
                         message: message,
-                        numbers: numbersString
+                        receivers: numbersString,
+                        dateToSend: currentDateTime // برای ارسال فوری
                     })
                 });
 
                 const result = await response.json();
 
                 if (response.ok) {
-                    showSuccessModal(`پیامک با موفقیت ارسال شد!<br>تعداد شماره‌های ارسال شده: ${correctNumbers.length}<br>وضعیت: ${result.response.includes('success') ? 'موفق' : 'ارسال شده'}`);
+                    // بررسی وضعیت پاسخ - اگر statusCode وجود داشت و مثبت بود
+                    const statusMessage = result.statusCode && result.statusCode > 0 ?
+                        `موفق - کد وضعیت: ${result.statusCode}` :
+                        'ارسال انجام شد';
+
+                    showSuccessModal(`پیامک با موفقیت ارسال شد!<br>تعداد شماره‌های ارسال شده: ${correctNumbers.length}<br>کد وضعیت: ${statusMessage}<br><br>ممکن است دقایقی زمان‌بر باشد تا پیامک انبوه شما به کاربران مورد نظر برسد.`);
+
+                    // بروزرسانی موجودی کاربر
+                    await fetchUserInfo();
                 } else {
-                    showModal(`خطا در ارسال پیامک:<br>${result.error || 'خطای نامشخص'}`);
+                    showModal(`خطا در ارسال پیامک:<br>${result.rawResponse || result.message || 'خطای نامشخص'}`);
                 }
             } catch (error) {
                 showModal(`خطا در ارسال پیامک:<br>${error.message}`);
@@ -940,7 +974,7 @@
             document.getElementById('modal').style.display = 'none';
         }
 
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             const modal = document.getElementById('modal');
             if (event.target === modal) {
                 modal.style.display = 'none';
