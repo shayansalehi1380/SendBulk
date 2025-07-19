@@ -26,11 +26,31 @@ namespace SendBulk.Controllers
         {
             try
             {
-                var credit = await _smsService.GetCreditAsync();
+                // استفاده از متد Legacy برای backward compatibility
+                var credit = await _smsService.GetCreditLegacyAsync();
                 if (credit.RetStatus == 1)
                     return Ok(credit);
 
                 return BadRequest(credit);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Get Credit with Token (مشاهده موجودی با توکن)
+        /// </summary>
+        /// <param name="token">User token</param>
+        /// <returns>Get Credit with Token</returns>
+        [HttpPost("credit-with-token")]
+        public async Task<IActionResult> GetCreditWithToken([FromBody] string token)
+        {
+            try
+            {
+                var result = await _smsService.GetCreditAsync(token);
+                return Ok(result);
             }
             catch (Exception ex)
             {
@@ -43,7 +63,7 @@ namespace SendBulk.Controllers
         {
             try
             {
-                var credit = await _smsService.GetCreditAsync();
+                var credit = await _smsService.GetCreditLegacyAsync();
 
                 if (credit.RetStatus == 1)
                 {
@@ -63,6 +83,24 @@ namespace SendBulk.Controllers
             }
         }
 
+        /// <summary>
+        /// Get User Info with Token (اطلاعات کاربر با توکن)
+        /// </summary>
+        /// <param name="token">User token</param>
+        /// <returns>User Info with Token</returns>
+        [HttpPost("user/info-with-token")]
+        public async Task<IActionResult> GetUserInfoWithToken([FromBody] string token)
+        {
+            try
+            {
+                var result = await _smsService.GetUserInfoAsync(token);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
 
         /// <summary>
         /// SendMultipleSMS (ارسال چندتایی)
@@ -80,6 +118,25 @@ namespace SendBulk.Controllers
                     SentTo = cleanedNumbers,
                     Response = response
                 });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Send SMS with Token (ارسال با توکن)
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns>Send SMS with Token</returns>
+        [HttpPost("send-with-token")]
+        public async Task<IActionResult> SendWithToken([FromBody] TokenSmsRequest request)
+        {
+            try
+            {
+                var result = await _smsService.SendSMSAsync(request.Token, request.Title, request.Message, request.Numbers);
+                return Ok(result);
             }
             catch (Exception ex)
             {
@@ -117,6 +174,25 @@ namespace SendBulk.Controllers
             }
         }
 
+        /// <summary>
+        /// Get SMS Plan Info with Token (اطلاعات بسته با توکن)
+        /// </summary>
+        /// <param name="token">User token</param>
+        /// <returns>SMS Plan Info</returns>
+        [HttpPost("plan-info")]
+        public async Task<IActionResult> GetSMSPlanInfo([FromBody] string token)
+        {
+            try
+            {
+                var result = await _smsService.GetSMSPlanInfoAsync(token);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         // متدی برای استخراج عدد برگشتی از داخل XML SOAP
         private int ExtractResultFromSoap(string soapResponse)
         {
@@ -140,6 +216,14 @@ namespace SendBulk.Controllers
                 return -997;
             }
         }
+    }
 
+    // کلاس درخواست برای ارسال با توکن
+    public class TokenSmsRequest
+    {
+        public string Token { get; set; }
+        public string Title { get; set; }
+        public string Message { get; set; }
+        public string Numbers { get; set; }
     }
 }

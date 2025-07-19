@@ -577,9 +577,30 @@
     <script>
         let phoneNumbers = [];
         let testPassed = false;
-        let userBalance = 0; // موجودی واقعی از API دریافت می‌شود
-        let smsPrice = 150; // قیمت ثابت هر صفحه پیامک
+        let userBalance = 0;
+        let userName = '';
+        let userToken = 'tWODB2%2brpUw%3d'; // توکن کاربر
         const apiBaseUrl = window.location.origin + '/api/sms';
+
+        
+        function getUserToken() {
+            
+            if (userToken && userToken !== '') {
+                return decodeURIComponent(userToken);
+            }
+
+            // دریافت از کوکی
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === 'auth_token' || name === 'token') {
+                    return decodeURIComponent(value);
+                }
+            }
+
+            // یا از localStorage/sessionStorage
+            return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
+        }
 
         // Event listeners
         document.getElementById('message').addEventListener('input', function () {
@@ -624,32 +645,103 @@
             smsInfo.textContent = `تعداد صفحات: ${pages} پیامک`;
         }
 
+        // دریافت اطلاعات کاربر - مطابق با C# API
         async function fetchUserInfo() {
             try {
-                const response = await fetch('/api/sms/user/info');
+                const token = getUserToken();
 
-                if (!response.ok) {
-                    throw new Error('دریافت اطلاعات کاربر با خطا مواجه شد');
+                if (!token) {
+                    throw new Error('توکن احراز هویت یافت نشد');
                 }
 
-                const data = await response.json();
+                // استفاده از endpoint صحیح: POST /api/sms/user/info-with-token
+                const response = await fetch(`${apiBaseUrl}/user/info-with-token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(token) // ارسال به صورت string مطابق C#
+                });
 
-                // بروزرسانی موجودی واقعی (تعداد صفحه پیامک)
-                userBalance = parseInt(data.balance) || 0; // فرض بر این که API موجودی را برحسب تعداد صفحه پیامک ارسال می‌کند
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`خطای سرور: ${response.status} - ${errorText}`);
+                }
 
-                // نمایش موجودی فقط به صورت تعداد صفحه پیامک
-                document.getElementById('userName').textContent = data.name;
-                document.getElementById('userBalanceDisplay').textContent = `${userBalance} صفحه پیامک`;
+                const result = await response.json();
+                console.log('User info response:', result);
+
+                // بررسی ساختار response بر اساس C# API
+                if (result && typeof result === 'object') {
+                    // اگر API موفق باشد، ساختار response ممکن است شامل status باشد یا مستقیماً data
+                    const userData = result.data || result;
+
+                    userName = userData.name || 'کاربر';
+                    userBalance = parseFloat(userData.balance) || 0;
+
+                    // نمایش اطلاعات کاربر
+                    document.getElementById('userName').textContent = userName;
+                    document.getElementById('userBalanceDisplay').textContent = `${userBalance.toFixed(2)} اعتبار`;
+                } else {
+                    throw new Error('پاسخ نامعتبر از سرور');
+                }
             } catch (error) {
                 console.error('خطا در دریافت اطلاعات کاربر:', error);
-                // در صورت خطا، موجودی را صفر قرار می‌دهیم
+                userBalance = 0;
+                userName = 'کاربر';
+                document.getElementById('userName').textContent = userName;
+                document.getElementById('userBalanceDisplay').textContent = 'خطا در دریافت موجودی';
+
+                // نمایش پیام خطا برای کاربر
+                showModal(`خطا در احراز هویت: ${error.message}`);
+            }
+        }
+
+        // دریافت موجودی کاربر - مطابق با C# API
+        async function fetchUserCredit() {
+            try {
+                const token = getUserToken();
+
+                if (!token) {
+                    throw new Error('توکن احراز هویت یافت نشد');
+                }
+
+                // استفاده از endpoint صحیح: POST /api/sms/credit-with-token
+                const response = await fetch(`${apiBaseUrl}/credit-with-token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(token) // ارسال به صورت string مطابق C#
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`خطای سرور: ${response.status} - ${errorText}`);
+                }
+
+                const result = await response.json();
+                console.log('Credit response:', result);
+
+                // بررسی ساختار response
+                if (result && typeof result === 'object') {
+                    const creditData = result.data || result;
+                    userBalance = parseFloat(creditData.value || creditData.balance || creditData) || 0;
+                    document.getElementById('userBalanceDisplay').textContent = `${userBalance.toFixed(2)} اعتبار`;
+                } else {
+                    throw new Error('پاسخ نامعتبر از سرور');
+                }
+            } catch (error) {
+                console.error('خطا در دریافت موجودی:', error);
                 userBalance = 0;
                 document.getElementById('userBalanceDisplay').textContent = 'خطا';
             }
         }
 
         // فراخوانی هنگام بارگذاری صفحه
-        window.addEventListener('DOMContentLoaded', fetchUserInfo);
+        window.addEventListener('DOMContentLoaded', function () {
+            fetchUserInfo();
+        });
 
         function handlePhoneInput(e) {
             const input = e.target;
@@ -688,9 +780,9 @@
                 const tag = document.createElement('div');
                 tag.className = 'phone-tag';
                 tag.innerHTML = `
-                    ${number}
-                    <button class="remove-btn" onclick="removePhone(${index})">×</button>
-                `;
+            ${number}
+            <button class="remove-btn" onclick="removePhone(${index})">×</button>
+        `;
                 container.appendChild(tag);
             });
 
@@ -708,7 +800,6 @@
             }, 10);
         }
 
-        // بررسی تعداد شماره‌های صحیح
         function getValidNumbersCount() {
             return phoneNumbers.filter(number =>
                 number.length === 11 && number.startsWith('09') && /^\d{11}$/.test(number)
@@ -742,7 +833,6 @@
                 phoneError.textContent = 'لطفاً حداقل یک شماره تلفن وارد کنید';
                 isValid = false;
             } else {
-                // بررسی حداقل 10 شماره صحیح
                 const validCount = getValidNumbersCount();
                 if (validCount < 10) {
                     phoneError.textContent = `حداقل 10 شماره صحیح مورد نیاز است. تعداد شماره‌های صحیح فعلی: ${validCount}`;
@@ -755,6 +845,7 @@
             return isValid;
         }
 
+        // ارسال تست - مطابق با C# API
         async function sendTest() {
             if (!validateFields()) return;
 
@@ -779,28 +870,39 @@
 
             messageError.textContent = '';
 
-            // ارسال به بک‌اند
             try {
-                const response = await fetch('/api/sms/send', {
+                const token = getUserToken();
+
+                if (!token) {
+                    throw new Error('توکن احراز هویت یافت نشد');
+                }
+
+                // استفاده از endpoint صحیح: POST /api/sms/send-with-token
+                const response = await fetch(`${apiBaseUrl}/send-with-token`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
+                        token: token,
                         title: title,
                         message: message,
                         numbers: "09015538133" // شماره تست
                     })
                 });
 
-                const result = await response.text(); // اگر endpoint تست فقط text برمی‌گردونه
+                const result = await response.json();
 
-                if (response.ok) {
+                if (response.ok && result) {
                     testPassed = true;
                     document.getElementById('checkBtn').disabled = false;
                     showModal('ارسال تست با موفقیت انجام شد. پیام به شماره ادمین ارسال شد!');
+
+                    // بروزرسانی موجودی بعد از ارسال تست
+                    await fetchUserCredit();
                 } else {
-                    showModal(`خطا در ارسال تست: ${result}`);
+                    const errorMsg = result?.error || result?.Error || 'خطای نامشخص';
+                    showModal(`خطا در ارسال تست: ${errorMsg}`);
                 }
             } catch (error) {
                 showModal('خطا در ارسال تست: ' + error.message);
@@ -845,9 +947,9 @@
 
             const totalSMSNeeded = correctNumbers.length * pagesPerSMS;
 
-            // بررسی موجودی واقعی به تعداد صفحه پیامک
+            // بررسی موجودی کافی
             if (userBalance < totalSMSNeeded) {
-                showBalanceModal(`موجودی کافی نیست.<br>موجودی فعلی: ${userBalance} صفحه پیامک.<br>برای ارسال، ${totalSMSNeeded} صفحه پیامک مورد نیاز است.`);
+                showBalanceModal(`موجودی کافی نیست.<br>موجودی فعلی: ${userBalance.toFixed(2)} اعتبار<br>برای ارسال، ${totalSMSNeeded} اعتبار مورد نیاز است.`);
                 return;
             }
 
@@ -865,12 +967,12 @@
             document.getElementById('analysisResult').style.display = 'block';
         }
 
+        // ارسال انبوه - مطابق با C# API
         async function sendBulkSMS() {
             const title = document.getElementById('title').value.trim();
             const message = document.getElementById('message').value.trim();
             const numbersString = phoneNumbers.join(',');
 
-            // محاسبه تعداد شماره‌های صحیح و یکتا
             const numberCount = {};
             phoneNumbers.forEach(number => {
                 numberCount[number] = (numberCount[number] || 0) + 1;
@@ -880,52 +982,46 @@
                 number => number.length === 11 && number.startsWith('09')
             );
 
-            // ساخت تاریخ و زمان فعلی به فرمت مطلوب
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const currentDateTime = `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
-
             // نمایش loading
             document.getElementById('loading').style.display = 'block';
 
             try {
-                const response = await fetch(`${apiBaseUrl}/add-bulk`, {
+                const token = getUserToken();
+
+                if (!token) {
+                    throw new Error('توکن احراز هویت یافت نشد');
+                }
+
+                // استفاده از endpoint صحیح: POST /api/sms/send-with-token
+                const response = await fetch(`${apiBaseUrl}/send-with-token`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
+                        token: token,
                         title: title,
                         message: message,
-                        receivers: numbersString,
-                        dateToSend: currentDateTime // برای ارسال فوری
+                        numbers: numbersString
                     })
                 });
 
                 const result = await response.json();
 
-                if (response.ok) {
-                    // بررسی وضعیت پاسخ - اگر statusCode وجود داشت و مثبت بود
-                    const statusMessage = result.statusCode && result.statusCode > 0 ?
-                        `موفق - کد وضعیت: ${result.statusCode}` :
-                        'ارسال انجام شد';
+                if (response.ok && result) {
+                    const sentCount = result.sentTo?.length || correctNumbers.length;
 
-                    showSuccessModal(`پیامک با موفقیت ارسال شد!<br>تعداد شماره‌های ارسال شده: ${correctNumbers.length}<br>کد وضعیت: ${statusMessage}<br><br>ممکن است دقایقی زمان‌بر باشد تا پیامک انبوه شما به کاربران مورد نظر برسد.`);
+                    showSuccessModal(`پیامک با موفقیت ارسال شد!<br>تعداد شماره‌های ارسال شده: ${sentCount}<br><br>ممکن است دقایقی زمان‌بر باشد تا پیامک انبوه شما به کاربران مورد نظر برسد.`);
 
                     // بروزرسانی موجودی کاربر
-                    await fetchUserInfo();
+                    await fetchUserCredit();
                 } else {
-                    showModal(`خطا در ارسال پیامک:<br>${result.rawResponse || result.message || 'خطای نامشخص'}`);
+                    const errorMsg = result?.error || result?.Error || 'خطای نامشخص';
+                    showModal(`خطا در ارسال پیامک:<br>${errorMsg}`);
                 }
             } catch (error) {
                 showModal(`خطا در ارسال پیامک:<br>${error.message}`);
             } finally {
-                // مخفی کردن loading
                 document.getElementById('loading').style.display = 'none';
             }
         }
@@ -947,22 +1043,22 @@
 
         function showBalanceModal(content) {
             document.getElementById('modalContent').innerHTML = `
-                <div>${content}</div>
-                <div class="modal-buttons">
-                    <button class="btn-modal btn-recharge">افزایش موجودی</button>
-                    <button class="btn-modal btn-close" onclick="closeModal()">بستن</button>
-                </div>
-            `;
+        <div>${content}</div>
+        <div class="modal-buttons">
+            <button class="btn-modal btn-recharge">افزایش موجودی</button>
+            <button class="btn-modal btn-close" onclick="closeModal()">بستن</button>
+        </div>
+    `;
             document.getElementById('modal').style.display = 'block';
         }
 
         function showSuccessModal(content) {
             document.getElementById('modalContent').innerHTML = `
-                <div>${content}</div>
-                <div class="modal-buttons">
-                    <button class="btn-modal btn-ok" onclick="refreshPage()">اوکی</button>
-                </div>
-            `;
+        <div>${content}</div>
+        <div class="modal-buttons">
+            <button class="btn-modal btn-ok" onclick="refreshPage()">اوکی</button>
+        </div>
+    `;
             document.getElementById('modal').style.display = 'block';
         }
 
