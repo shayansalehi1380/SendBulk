@@ -579,12 +579,13 @@
         let testPassed = false;
         let userBalance = 0;
         let userName = '';
+        let userCellPhone = '';
         let userToken = 'tWODB2%2brpUw%3d'; // توکن کاربر
         const apiBaseUrl = window.location.origin + '/api/sms';
 
-        
+
         function getUserToken() {
-            
+
             if (userToken && userToken !== '') {
                 return decodeURIComponent(userToken);
             }
@@ -650,54 +651,94 @@
             try {
                 const token = getUserToken();
 
+                console.log('=== JavaScript Debug Start ===');
+                console.log('Token:', token ? token.substring(0, 10) + '...' : 'No token');
+
                 if (!token) {
                     throw new Error('توکن احراز هویت یافت نشد');
                 }
 
-                // استفاده از endpoint صحیح: POST /api/sms/user/info-with-token
                 const response = await fetch(`${apiBaseUrl}/user/info-with-token`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(token) // ارسال به صورت string مطابق C#
+                    body: JSON.stringify(token)
                 });
+
+                console.log('Response status:', response.status);
 
                 if (!response.ok) {
                     const errorText = await response.text();
+                    console.error('Response error:', errorText);
                     throw new Error(`خطای سرور: ${response.status} - ${errorText}`);
                 }
 
                 const result = await response.json();
-                console.log('User info response:', result);
+                console.log('Complete API response:', JSON.stringify(result, null, 2));
 
-                // بررسی ساختار response بر اساس C# API
-                if (result && typeof result === 'object') {
-                    // اگر API موفق باشد، ساختار response ممکن است شامل status باشد یا مستقیماً data
-                    const userData = result.data || result;
+                // بررسی ساختار response
+                if (result && result.status === 'success' && result.data) {
+                    const userData = result.data;
 
-                    userName = userData.name || 'کاربر';
-                    userBalance = parseFloat(userData.balance) || 0;
+                    console.log('User data:', JSON.stringify(userData, null, 2));
 
-                    // نمایش اطلاعات کاربر
-                    document.getElementById('userName').textContent = userName;
-                    document.getElementById('userBalanceDisplay').textContent = `${userBalance.toFixed(2)} اعتبار`;
+                    // استخراج اطلاعات با fallback های مختلف
+                    userName = userData.name || userData.Name || 'کاربر';
+                    userBalance = parseFloat(userData.balance || userData.Balance || 0);
+
+                    // برای شماره همراه، همه احتمالات را بررسی کن
+                    userCellPhone = userData.cellPhone ||
+                        userData.mobile ||
+                        userData.phone ||
+                        userData.CellPhone ||
+                        userData.Mobile ||
+                        userData.Phone || '';
+
+                    console.log('Extracted values:');
+                    console.log('- userName:', userName);
+                    console.log('- userBalance:', userBalance);
+                    console.log('- userCellPhone:', userCellPhone);
+
+                    // تعیین نام نمایشی
+                    let displayName = userName;
+                    if (userCellPhone && userCellPhone.trim() !== '') {
+                        displayName = userCellPhone.trim();
+                        console.log('Using cellphone as display name:', displayName);
+                    } else {
+                        console.log('Using username as display name:', displayName);
+                    }
+
+                    // بروزرسانی UI
+                    document.getElementById('userName').textContent = displayName;
+                    document.getElementById('userBalanceDisplay').textContent = userBalance.toFixed(2);
+
+                    console.log('UI updated successfully');
+
                 } else {
+                    console.error('Invalid response structure:', result);
                     throw new Error('پاسخ نامعتبر از سرور');
                 }
+
+                console.log('=== JavaScript Debug End ===');
+
             } catch (error) {
-                console.error('خطا در دریافت اطلاعات کاربر:', error);
+                console.error('Error in fetchUserInfo:', error);
+
+                // تنظیم مقادیر پیش‌فرض
                 userBalance = 0;
                 userName = 'کاربر';
-                document.getElementById('userName').textContent = userName;
-                document.getElementById('userBalanceDisplay').textContent = 'خطا در دریافت موجودی';
+                userCellPhone = '';
 
-                // نمایش پیام خطا برای کاربر
+                document.getElementById('userName').textContent = 'خطا در بارگیری';
+                document.getElementById('userBalanceDisplay').textContent = '0';
+
+                // نمایش خطا
                 showModal(`خطا در احراز هویت: ${error.message}`);
             }
         }
 
-        // دریافت موجودی کاربر - مطابق با C# API
+        // دریافت موجودی کاربر - اصلاح شده
         async function fetchUserCredit() {
             try {
                 const token = getUserToken();
@@ -706,13 +747,12 @@
                     throw new Error('توکن احراز هویت یافت نشد');
                 }
 
-                // استفاده از endpoint صحیح: POST /api/sms/credit-with-token
                 const response = await fetch(`${apiBaseUrl}/credit-with-token`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(token) // ارسال به صورت string مطابق C#
+                    body: JSON.stringify(token)
                 });
 
                 if (!response.ok) {
@@ -723,18 +763,21 @@
                 const result = await response.json();
                 console.log('Credit response:', result);
 
-                // بررسی ساختار response
+                // بررسی ساختار response و بروزرسانی فقط موجودی
                 if (result && typeof result === 'object') {
                     const creditData = result.data || result;
                     userBalance = parseFloat(creditData.value || creditData.balance || creditData) || 0;
-                    document.getElementById('userBalanceDisplay').textContent = `${userBalance.toFixed(2)} اعتبار`;
+
+                    // فقط موجودی را بروزرسانی کن، نام کاربر را دست نزن
+                    document.getElementById('userBalanceDisplay').textContent = userBalance.toFixed(2);
                 } else {
                     throw new Error('پاسخ نامعتبر از سرور');
                 }
             } catch (error) {
                 console.error('خطا در دریافت موجودی:', error);
                 userBalance = 0;
-                document.getElementById('userBalanceDisplay').textContent = 'خطا';
+                // فقط موجودی را صفر کن، نام کاربر را دست نزن
+                document.getElementById('userBalanceDisplay').textContent = '0';
             }
         }
 
@@ -877,7 +920,8 @@
                     throw new Error('توکن احراز هویت یافت نشد');
                 }
 
-                // استفاده از endpoint صحیح: POST /api/sms/send-with-token
+                // برای تست، از شماره تست ثابت استفاده می‌کنیم
+                // API خودش شماره را از دیتابیس خواهد خواند
                 const response = await fetch(`${apiBaseUrl}/send-with-token`, {
                     method: 'POST',
                     headers: {
@@ -887,7 +931,7 @@
                         token: token,
                         title: title,
                         message: message,
-                        numbers: "09015538133" // شماره تست
+                        numbers: "test" // API می‌داند که برای test باید از دیتابیس بخواند
                     })
                 });
 
@@ -896,7 +940,10 @@
                 if (response.ok && result) {
                     testPassed = true;
                     document.getElementById('checkBtn').disabled = false;
-                    showModal('ارسال تست با موفقیت انجام شد. پیام به شماره ادمین ارسال شد!');
+
+                    // نمایش شماره ارسال شده در پیام موفقیت
+                    const testPhoneDisplay = userCellPhone || "شماره شما";
+                    showModal(`ارسال تست با موفقیت انجام شد. پیام به شماره ${testPhoneDisplay} ارسال شد!`);
 
                     // بروزرسانی موجودی بعد از ارسال تست
                     await fetchUserCredit();
@@ -1048,7 +1095,7 @@
             <button class="btn-modal btn-recharge">افزایش موجودی</button>
             <button class="btn-modal btn-close" onclick="closeModal()">بستن</button>
         </div>
-    `;
+`;
             document.getElementById('modal').style.display = 'block';
         }
 
@@ -1058,7 +1105,7 @@
         <div class="modal-buttons">
             <button class="btn-modal btn-ok" onclick="refreshPage()">اوکی</button>
         </div>
-    `;
+`;
             document.getElementById('modal').style.display = 'block';
         }
 

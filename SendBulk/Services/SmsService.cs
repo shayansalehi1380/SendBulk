@@ -207,29 +207,47 @@ namespace SendBulk.Services
         {
             try
             {
+                Console.WriteLine($"=== GetUserInfoAsync Debug Start ===");
+                Console.WriteLine($"Token received: {token?.Substring(0, Math.Min(10, token?.Length ?? 0))}...");
+
                 var userId = await GetUserIdFromTokenAsync(token);
+                Console.WriteLine($"UserID extracted from token: {userId}");
+
                 var credit = await GetUserCreditFromDatabaseAsync(userId);
+                Console.WriteLine($"User credit retrieved: {credit}");
 
-                // Get user name from database (you might need to adjust this query)
-                string userName = await GetUserNameAsync(userId);
+                // دریافت اطلاعات کاربر شامل شماره همراه
+                var userInfo = await GetFullUserInfoAsync(userId);
+                Console.WriteLine($"User info retrieved: Name='{userInfo.Name}', CellPhone='{userInfo.CellPhone}'");
 
-                return new
+                var result = new
                 {
                     status = "success",
                     data = new
                     {
-                        name = userName,
+                        name = userInfo.Name,
                         balance = credit.ToString("0.00"),
-                        userId = userId
+                        userId = userId,
+                        cellPhone = userInfo.CellPhone,
+                        mobile = userInfo.CellPhone, // برای سازگاری
+                        phone = userInfo.CellPhone   // برای سازگاری
                     }
                 };
+
+                Console.WriteLine($"Final result to return: {System.Text.Json.JsonSerializer.Serialize(result)}");
+                Console.WriteLine($"=== GetUserInfoAsync Debug End ===");
+
+                return result;
             }
             catch (UnauthorizedAccessException ex)
             {
+                Console.WriteLine($"Unauthorized error in GetUserInfoAsync: {ex.Message}");
                 return new { status = "error", msg = ex.Message, data = (object)null };
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"General error in GetUserInfoAsync: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 return new { status = "error", msg = ex.Message, data = (object)null };
             }
         }
@@ -484,5 +502,70 @@ namespace SendBulk.Services
                 throw;
             }
         }
+
+        // متد جدید برای دریافت اطلاعات کامل کاربر
+        private async Task<UserInfo> GetFullUserInfoAsync(int userId)
+        {
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+
+                    // Query تصحیح شده بر اساس schema واقعی دیتابیس
+                    var query = @"
+                SELECT TOP 1 
+                    COALESCE(FirstName + ' ' + LastName, FirstName, LastName, Username, OrganizationName) as Name,
+                    CellPhone,
+                    Tel as Phone
+                FROM [toranjdata_crm_2018].[dbo].[User] 
+                WHERE UserID = @UserId";
+
+                    using (var command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserId", userId);
+
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            if (reader.Read())
+                            {
+                                var name = reader["Name"]?.ToString() ?? "کاربر";
+                                var cellPhone = reader["CellPhone"]?.ToString() ?? "";
+                                var phone = reader["Phone"]?.ToString() ?? "";
+
+                                // اگر شماره همراه خالی بود، از تلفن ثابت استفاده کن
+                                var finalPhone = !string.IsNullOrWhiteSpace(cellPhone) ? cellPhone : phone;
+
+                                Console.WriteLine($"User Info Retrieved: Name={name}, CellPhone={cellPhone}, Phone={phone}, Final={finalPhone}");
+
+                                return new UserInfo
+                                {
+                                    Name = name,
+                                    CellPhone = finalPhone
+                                };
+                            }
+                        }
+                    }
+
+                    Console.WriteLine("No user found in database");
+                    return new UserInfo { Name = "کاربر", CellPhone = "" };
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"خطا در دریافت اطلاعات کاربر: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                return new UserInfo { Name = "کاربر", CellPhone = "" };
+            }
+        }
+
+        // کلاس کمکی
+        public class UserInfo
+        {
+            public string Name { get; set; } = "";
+            public string CellPhone { get; set; } = "";
+        }
     }
+
+
 }
