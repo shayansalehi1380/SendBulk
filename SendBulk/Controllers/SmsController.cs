@@ -103,6 +103,117 @@ namespace SendBulk.Controllers
         }
 
         /// <summary>
+        /// Send Bulk SMS with Token (ارسال انبوه با توکن)
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns>Send Bulk SMS with Token</returns>
+        [HttpPost("add-bulk-with-token")]
+        public async Task<IActionResult> AddBulkWithToken([FromBody] TokenBulkSmsRequest request)
+        {
+            try
+            {
+                // بررسی توکن و دریافت UserID
+                var userId = await GetUserIdFromTokenAsync(request.Token);
+
+                // ایجاد request برای AddNumberBulk
+                var bulkRequest = new AddNumberBulkRequest
+                {
+                    Title = request.Title,
+                    Message = request.Message,
+                    Receivers = request.Receivers,
+                    DateToSend = request.DateToSend
+                };
+
+                // محاسبه تعداد صفحات و اعتبار مورد نیاز
+                var pages = CalculateMessagePages(request.Message);
+                var numbersArray = request.Receivers.Split(',').Where(n => !string.IsNullOrWhiteSpace(n)).ToArray();
+                var totalCreditsRequired = numbersArray.Length * pages;
+
+                // بررسی موجودی کافی
+                if (!await CheckSufficientCreditAsync(userId, totalCreditsRequired))
+                {
+                    return BadRequest(new
+                    {
+                        statusCode = -1,
+                        rawResponse = "موجودی کیف پول کافی نمی‌باشد",
+                        error = "موجودی کافی نیست"
+                    });
+                }
+
+                // ارسال انبوه
+                var rawResponse = await _smsService.AddNumberBulkAsync(bulkRequest);
+                var resultValue = ExtractResultFromSoap(rawResponse);
+
+                // اگر ارسال موفق بود، اعتبار را کسر کن
+                if (resultValue >= 0)
+                {
+                    await UpdateUserCreditAsync(userId, -totalCreditsRequired, "ارسال انبوه پیامک", numbersArray.Length);
+                }
+
+                return Ok(new AddNumberBulkResponse
+                {
+                    StatusCode = resultValue,
+                    RawResponse = rawResponse
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new
+                {
+                    statusCode = -1,
+                    rawResponse = ex.Message,
+                    error = "خطای احراز هویت"
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new AddNumberBulkResponse
+                {
+                    StatusCode = -1,
+                    RawResponse = $"خطا: {ex.Message}"
+                });
+            }
+        }
+
+        // مدل جدید برای درخواست ارسال انبوه با توکن
+        public class TokenBulkSmsRequest
+        {
+            public string Token { get; set; }
+            public string Title { get; set; }
+            public string Message { get; set; }
+            public string Receivers { get; set; }
+            public string DateToSend { get; set; }
+        }
+
+        // متدهای کمکی که باید در کنترلر اضافه شوند:
+        private async Task<int> GetUserIdFromTokenAsync(string token)
+        {
+            // همان منطق موجود در SmsService
+            return await _smsService.GetUserIdFromTokenAsync(token);
+        }
+
+        private int CalculateMessagePages(string message)
+        {
+            int charCount = message.Length;
+            if (charCount <= 70)
+                return 1;
+            else
+                return (int)Math.Ceiling((charCount - 70) / 67.0) + 1;
+        }
+
+        private async Task<bool> CheckSufficientCreditAsync(int userId, int requiredPages)
+        {
+            // باید از SmsService استفاده کنید
+            return await _smsService.CheckSufficientCreditAsync(userId, requiredPages);
+        }
+
+        private async Task UpdateUserCreditAsync(int userId, decimal creditChange, string description, int messageCount)
+        {
+            // باید از SmsService استفاده کنید
+            await _smsService.UpdateUserCreditAsync(userId, creditChange, description, messageCount);
+        }
+
+        /// <summary>
         /// SendMultipleSMS (ارسال چندتایی)
         /// </summary>
         /// <param name="request"></param>
