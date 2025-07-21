@@ -953,8 +953,6 @@ namespace SendBulk.Services
         }
 
 
-
-
         // کلاس مدل برای پاسخ اعتبار
         public class CreditResponse
         {

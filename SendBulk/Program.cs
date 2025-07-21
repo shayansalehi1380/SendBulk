@@ -17,6 +17,8 @@ builder.Services.AddSwaggerGen(options =>
     }
 });
 
+builder.Services.AddHostedService<SmsMonitoringService>();
+
 // اضافه کردن تنظیمات SMS
 builder.Services.Configure<FarapayamakSettings>(
     builder.Configuration.GetSection("Farapayamak"));

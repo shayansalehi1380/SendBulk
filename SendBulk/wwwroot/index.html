@@ -1057,9 +1057,12 @@
             // تبدیل آرایه به رشته با جداکننده کاما
             const numbersString = correctNumbers.join(',');
 
-            // استفاده از تاریخ سرور (بدون تبدیل timezone)
-            // فقط فرمت را درست کنیم
+            // ایجاد تاریخ با فرمت دقیق مطابق با API
             const now = new Date();
+
+            // اضافه کردن سی ثانیه  جلوتر از زمان فعلی یعنی سی ثانیه بعد از ارسال درخواست ما بفرسته سمت سرور
+            now.setSeconds(now.getSeconds() + 30);
+
             const year = now.getFullYear();
             const month = String(now.getMonth() + 1).padStart(2, '0');
             const day = String(now.getDate()).padStart(2, '0');
@@ -1067,6 +1070,7 @@
             const minutes = String(now.getMinutes()).padStart(2, '0');
             const seconds = String(now.getSeconds()).padStart(2, '0');
 
+            // فرمت دقیق برای API: yyyy/MM/dd HH:mm:ss
             const dateToSend = `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 
             // نمایش loading
@@ -1083,16 +1087,18 @@
                 console.log('Message:', message);
                 console.log('Receivers count:', correctNumbers.length);
                 console.log('DateToSend:', dateToSend);
-                console.log('Server timezone will be used');
+                console.log('Numbers:', numbersString);
 
                 // ارسال با تنظیمات مناسب برای encoding فارسی
                 const requestBody = {
                     token: token,
-                    title: title, // بدون تغییر - سرور باید encoding را درست handle کند
-                    message: message, // بدون تغییر - سرور باید encoding را درست handle کند
+                    title: title,
+                    message: message,
                     receivers: numbersString,
-                    DateToSend: dateToSend
+                    DateToSend: dateToSend  // این فرمت باید دقیقاً مطابق نمونه کارکرد باشد
                 };
+
+                console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
                 const response = await fetch(`${apiBaseUrl}/add-bulk-with-token`, {
                     method: 'POST',
@@ -1124,12 +1130,12 @@
                         const sentCount = correctNumbers.length;
 
                         showSuccessModal(`
-                    پیامک انبوه با موفقیت ارسال شد!<br>
-                    شناسه پیام: ${statusCode}<br>
-                    تعداد شماره‌های ارسال شده: ${sentCount}<br>
-                    زمان ارسال: ${dateToSend}<br><br>
-                    ممکن است دقایقی زمان‌بر باشد تا پیامک انبوه شما به کاربران مورد نظر برسد.
-                `);
+            پیامک انبوه با موفقیت ارسال شد!<br>
+            شناسه پیام: ${statusCode}<br>
+            تعداد شماره‌های ارسال شده: ${sentCount}<br>
+            زمان ارسال: ${dateToSend}<br><br>
+            ممکن است دقایقی زمان‌بر باشد تا پیامک انبوه شما به کاربران مورد نظر برسد.
+        `);
 
                         // پاک کردن فیلدها
                         document.getElementById('title').value = '';
@@ -1153,7 +1159,7 @@
                                 errorMessage = 'خطا در شماره فرستنده';
                                 break;
                             case 4:
-                                errorMessage = 'خطا در فرمت تاریخ یا پارامترهای ارسال';
+                                errorMessage = 'خطا در فرمت تاریخ یا پارامترهای ارسال - تاریخ باید در آینده باشد';
                                 break;
                             default:
                                 errorMessage = result.rawResponse || `خطا با کد ${statusCode}`;

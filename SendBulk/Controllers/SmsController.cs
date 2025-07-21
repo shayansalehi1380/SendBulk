@@ -3,6 +3,7 @@ using SendBulk.Models;
 using SendBulk.Models.Request;
 using SendBulk.Models.Response;
 using SendBulk.Services;
+using System.Globalization;
 
 namespace SendBulk.Controllers
 {
@@ -115,13 +116,39 @@ namespace SendBulk.Controllers
                 // بررسی توکن و دریافت UserID
                 var userId = await GetUserIdFromTokenAsync(request.Token);
 
+                // تبدیل تاریخ و بررسی فرمت
+                DateTime dateToSend;
+                try
+                {
+                    dateToSend = DateTime.ParseExact(request.DateToSend, "yyyy/MM/dd HH:mm:ss",
+                                                   CultureInfo.InvariantCulture);
+
+                    // بررسی که تاریخ در آینده باشد
+                    if (dateToSend <= DateTime.Now)
+                    {
+                        dateToSend = DateTime.Now.AddMinutes(2); // اضافه کردن 2 دقیقه
+                    }
+                }
+                catch (FormatException)
+                {
+                    return BadRequest(new
+                    {
+                        statusCode = 4,
+                        rawResponse = "فرمت تاریخ نامعتبر است. فرمت صحیح: yyyy/MM/dd HH:mm:ss",
+                        error = "خطا در فرمت تاریخ"
+                    });
+                }
+
+                // تبدیل مجدد تاریخ به فرمت مورد نظر
+                var formattedDate = dateToSend.ToString("yyyy/MM/dd HH:mm:ss");
+
                 // ایجاد request برای AddNumberBulk
                 var bulkRequest = new AddNumberBulkRequest
                 {
                     Title = request.Title,
                     Message = request.Message,
                     Receivers = request.Receivers,
-                    DateToSend = request.DateToSend
+                    DateToSend = formattedDate // استفاده از تاریخ فرمت شده
                 };
 
                 // محاسبه تعداد صفحات و اعتبار مورد نیاز
@@ -134,7 +161,7 @@ namespace SendBulk.Controllers
                 {
                     return BadRequest(new
                     {
-                        statusCode = -1,
+                        statusCode = -2,
                         rawResponse = "موجودی کیف پول کافی نمی‌باشد",
                         error = "موجودی کافی نیست"
                     });
