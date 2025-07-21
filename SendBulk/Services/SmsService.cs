@@ -321,6 +321,7 @@ namespace SendBulk.Services
         // ارسال انبوه SMS با استفاده از AddNumberBulk
         private async Task<object> SendBulkSMSInternalAsync(int userId, string title, string message, string numbersRaw)
         {
+            SqlTransaction transaction = null;
             try
             {
                 // اعتبارسنجی پیام
@@ -368,41 +369,228 @@ namespace SendBulk.Services
                     return new { status = "error", error = "موجودی کیف پول کافی نمی‌باشد" };
                 }
 
-                // ارسال انبوه
-                var receivers = string.Join(",", validNumbers);
-                var dateToSend = DateTime.Now.AddMinutes(1).ToString("yyyy/MM/dd HH:mm:ss");
-
-                var bulkRequest = new AddNumberBulkRequest
+                // شروع تراکنش دیتابیس
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    Title = title,
-                    Message = message,
-                    Receivers = receivers,
-                    DateToSend = dateToSend
-                };
+                    await connection.OpenAsync();
+                    transaction = connection.BeginTransaction();
 
-                var bulkResponse = await AddNumberBulkAsync(bulkRequest);
-
-                // کسر از کیف پول مشتری
-                await UpdateUserCreditAsync(userId, -totalCreditsRequired, "ارسال انبوه پیامک", validNumbers.Count);
-
-                return new
-                {
-                    status = "success",
-                    msg = "پیامک انبوه با موفقیت ارسال شد",
-                    data = new
+                    try
                     {
-                        sentTo = validNumbers.ToArray(),
-                        count = validNumbers.Count,
-                        pages = pages,
-                        totalCreditsUsed = totalCreditsRequired,
-                        scheduledTime = dateToSend
+                        // ابتدا کسر از کیف پول مشتری
+                        await UpdateUserCreditWithTransactionAsync(userId, -totalCreditsRequired,
+                            "ارسال انبوه پیامک - در حال پردازش", validNumbers.Count, connection, transaction);
+
+                        // ارسال انبوه
+                        var receivers = string.Join(",", validNumbers);
+                        var dateToSend = DateTime.Now.AddMinutes(1).ToString("yyyy/MM/dd HH:mm:ss");
+
+                        var bulkRequest = new AddNumberBulkRequest
+                        {
+                            Title = title,
+                            Message = message,
+                            Receivers = receivers,
+                            DateToSend = dateToSend
+                        };
+
+                        Console.WriteLine($"=== BULK SMS REQUEST ===");
+                        Console.WriteLine($"Title: {title}");
+                        Console.WriteLine($"Message: {message.Substring(0, Math.Min(50, message.Length))}...");
+                        Console.WriteLine($"Numbers Count: {validNumbers.Count}");
+                        Console.WriteLine($"Date to Send: {dateToSend}");
+                        Console.WriteLine($"========================");
+
+                        // ارسال به فراپیامک
+                        var bulkResponse = await AddNumberBulkAsync(bulkRequest);
+
+                        // بررسی نتیجه ارسال
+                        var responseResult = ParseBulkSMSResponse(bulkResponse);
+
+                        if (responseResult.IsSuccess)
+                        {
+                            // موفق - تایید تراکنش
+                            await UpdateUserCreditDescriptionAsync(userId, "ارسال انبوه پیامک - موفق", connection, transaction);
+                            transaction.Commit();
+
+                            Console.WriteLine($"✅ BULK SMS SENT SUCCESSFULLY");
+                            Console.WriteLine($"Response ID: {responseResult.ResponseId}");
+
+                            return new
+                            {
+                                status = "success",
+                                statusCode = responseResult.StatusCode, // برای JavaScript
+                                msg = "پیامک انبوه با موفقیت ارسال شد",
+                                data = new
+                                {
+                                    sentTo = validNumbers.ToArray(),
+                                    count = validNumbers.Count,
+                                    pages = pages,
+                                    totalCreditsUsed = totalCreditsRequired,
+                                    scheduledTime = dateToSend,
+                                    responseId = responseResult.ResponseId
+                                }
+                            };
+                        }
+                        else
+                        {
+                            // خطا - برگشت اعتبار
+                            await UpdateUserCreditWithTransactionAsync(userId, totalCreditsRequired,
+                                $"برگشت اعتبار - خطا در ارسال: {responseResult.ErrorMessage}", validNumbers.Count, connection, transaction);
+                            transaction.Commit();
+
+                            Console.WriteLine($"❌ BULK SMS FAILED");
+                            Console.WriteLine($"Error: {responseResult.ErrorMessage}");
+                            Console.WriteLine($"Status Code: {responseResult.StatusCode}");
+
+                            return new
+                            {
+                                status = "error",
+                                statusCode = responseResult.StatusCode, // برای JavaScript
+                                error = $"خطا در ارسال به فراپیامک: {responseResult.ErrorMessage}",
+                                rawResponse = responseResult.RawResponse
+                            };
+                        }
                     }
-                };
+                    catch (Exception ex)
+                    {
+                        // خطا - برگشت تراکنش
+                        transaction?.Rollback();
+
+                        Console.WriteLine($"❌ EXCEPTION IN BULK SMS");
+                        Console.WriteLine($"Error: {ex.Message}");
+                        Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+
+                        throw;
+                    }
+                }
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"❌ CRITICAL ERROR IN SendBulkSMSInternalAsync: {ex.Message}");
                 return new { status = "error", error = $"خطا در ارسال انبوه: {ex.Message}" };
             }
+        }
+
+        private BulkSMSResponse ParseBulkSMSResponse(string soapResponse)
+        {
+            try
+            {
+                Console.WriteLine($"=== PARSING FARAPAYAMAK RESPONSE ===");
+                Console.WriteLine($"Raw Response: {soapResponse}");
+
+                var startTag = "<AddNumberBulkResult>";
+                var endTag = "</AddNumberBulkResult>";
+
+                var startIndex = soapResponse.IndexOf(startTag);
+                if (startIndex == -1)
+                {
+                    return new BulkSMSResponse
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = "پاسخ نامعتبر از سرور فراپیامک",
+                        RawResponse = soapResponse
+                    };
+                }
+
+                startIndex += startTag.Length;
+                var endIndex = soapResponse.IndexOf(endTag, startIndex);
+
+                if (endIndex == -1)
+                {
+                    return new BulkSMSResponse
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = "پاسخ ناقص از سرور فراپیامک",
+                        RawResponse = soapResponse
+                    };
+                }
+
+                var resultValue = soapResponse.Substring(startIndex, endIndex - startIndex).Trim();
+
+                Console.WriteLine($"Extracted Result Value: '{resultValue}'");
+
+                // بررسی نتیجه بر اساس مقدار برگشتی
+                if (long.TryParse(resultValue, out long responseId))
+                {
+                    if (responseId > 0)
+                    {
+                        // موفق
+                        Console.WriteLine($"✅ SUCCESS - Response ID: {responseId}");
+                        return new BulkSMSResponse
+                        {
+                            IsSuccess = true,
+                            StatusCode = 1,
+                            ResponseId = responseId.ToString(),
+                            RawResponse = soapResponse
+                        };
+                    }
+                    else
+                    {
+                        // خطا با کد منفی
+                        var errorMessage = GetFarapayamakErrorMessage(responseId);
+                        Console.WriteLine($"❌ ERROR - Code: {responseId}, Message: {errorMessage}");
+
+                        return new BulkSMSResponse
+                        {
+                            IsSuccess = false,
+                            StatusCode = (int)responseId,
+                            ErrorMessage = errorMessage,
+                            RawResponse = soapResponse
+                        };
+                    }
+                }
+                else
+                {
+                    // مقدار غیرعددی
+                    Console.WriteLine($"❌ NON-NUMERIC RESPONSE: {resultValue}");
+                    return new BulkSMSResponse
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = $"پاسخ غیرمنتظره: {resultValue}",
+                        RawResponse = soapResponse
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ EXCEPTION IN ParseBulkSMSResponse: {ex.Message}");
+                return new BulkSMSResponse
+                {
+                    IsSuccess = false,
+                    ErrorMessage = $"خطا در پردازش پاسخ: {ex.Message}",
+                    RawResponse = soapResponse
+                };
+            }
+        }
+
+        // متد برای ترجمه کدهای خطای فراپیامک
+        private string GetFarapayamakErrorMessage(long errorCode)
+        {
+            return errorCode switch
+            {
+                -1 => "نام کاربری یا رمز عبور اشتباه است",
+                -2 => "اعتبار کافی نیست",
+                -3 => "محدودیت در ارسال روزانه",
+                -4 => "محدودیت در حجم ارسال",
+                -5 => "شماره فرستنده معتبر نیست",
+                -6 => "سامانه در حالت تعمیر است",
+                -7 => "متن پیام خالی است",
+                -8 => "دریافت کنندگان معتبر نیستند",
+                -9 => "خط ارسالی فعال نیست",
+                -10 => "کاربر فعال نیست",
+                -11 => "عدم تطبیق اطلاعات ارسال با مشخصات کاربری",
+                _ => $"خطای نامشخص با کد {errorCode}"
+            };
+        }
+
+        // کلاس کمکی برای پاسخ ارسال انبوه
+        public class BulkSMSResponse
+        {
+            public bool IsSuccess { get; set; }
+            public int StatusCode { get; set; }
+            public string ResponseId { get; set; } = "";
+            public string ErrorMessage { get; set; } = "";
+            public string RawResponse { get; set; } = "";
         }
 
         // Update user credit in database
@@ -668,6 +856,102 @@ namespace SendBulk.Services
                 return -1;
             }
         }
+
+        private async Task UpdateUserCreditWithTransactionAsync(int userId, decimal creditChange, string description,
+    int messageCount, SqlConnection connection, SqlTransaction transaction)
+        {
+            try
+            {
+                // Get current credit
+                var currentCredit = await GetUserCreditFromDatabaseWithTransactionAsync(userId, connection, transaction);
+                var newCredit = currentCredit + creditChange;
+
+                var query = @"
+            INSERT INTO [toranjdata_crm_2018].[dbo].[apiMessaging] 
+            (UserID, Type, CreditChanges, RemainingCredit, Description, Date, Status, ip)
+            VALUES 
+            (@UserId, @Type, @CreditChanges, @RemainingCredit, @Description, @Date, @Status, @IP)";
+
+                using (var command = new SqlCommand(query, connection, transaction))
+                {
+                    command.Parameters.AddWithValue("@UserId", userId);
+                    command.Parameters.AddWithValue("@Type", 1);
+                    command.Parameters.AddWithValue("@CreditChanges", creditChange);
+                    command.Parameters.AddWithValue("@RemainingCredit", newCredit);
+                    command.Parameters.AddWithValue("@Description", $"{description} - تعداد: {messageCount}");
+                    command.Parameters.AddWithValue("@Date", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                    command.Parameters.AddWithValue("@Status", 1);
+                    command.Parameters.AddWithValue("@IP", "127.0.0.1");
+
+                    await command.ExecuteNonQueryAsync();
+                }
+
+                Console.WriteLine($"Credit updated in transaction for user {userId}: {creditChange} (New Balance: {newCredit})");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating credit in transaction: {ex.Message}");
+                throw;
+            }
+        }
+
+        // متد برای دریافت موجودی با تراکنش
+        private async Task<decimal> GetUserCreditFromDatabaseWithTransactionAsync(int userId, SqlConnection connection, SqlTransaction transaction)
+        {
+            try
+            {
+                var query = @"
+            SELECT TOP 1 RemainingCredit
+            FROM [toranjdata_crm_2018].[dbo].[apiMessaging]
+            WHERE UserID = @UserId AND ISDATE([Date]) = 1
+            ORDER BY TRY_CAST([Date] AS DATETIME) DESC;
+        ";
+
+                using (var command = new SqlCommand(query, connection, transaction))
+                {
+                    command.Parameters.AddWithValue("@UserId", userId);
+
+                    var result = await command.ExecuteScalarAsync();
+
+                    if (result != null && decimal.TryParse(result.ToString(), out decimal credit))
+                    {
+                        return credit;
+                    }
+
+                    return 0;
+                }
+            }
+            catch (Exception)
+            {
+                throw new Exception("خطا در دریافت موجودی کیف پول");
+            }
+        }
+
+        // متد برای بروزرسانی توضیحات اعتبار
+        private async Task UpdateUserCreditDescriptionAsync(int userId, string newDescription, SqlConnection connection, SqlTransaction transaction)
+        {
+            try
+            {
+                var query = @"
+            UPDATE [toranjdata_crm_2018].[dbo].[apiMessaging] 
+            SET Description = @NewDescription
+            WHERE UserID = @UserId 
+            AND Date = (SELECT MAX(Date) FROM [toranjdata_crm_2018].[dbo].[apiMessaging] WHERE UserID = @UserId)";
+
+                using (var command = new SqlCommand(query, connection, transaction))
+                {
+                    command.Parameters.AddWithValue("@UserId", userId);
+                    command.Parameters.AddWithValue("@NewDescription", newDescription);
+
+                    await command.ExecuteNonQueryAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"خطا در بروزرسانی توضیحات: {ex.Message}");
+            }
+        }
+
 
 
 

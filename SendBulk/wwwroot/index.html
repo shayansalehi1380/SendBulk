@@ -1034,82 +1034,139 @@
             const title = document.getElementById('title').value.trim();
             const message = document.getElementById('message').value.trim();
 
+            // بررسی ورودی‌ها
+            if (!title || !message) {
+                showModal('لطفا عنوان و متن پیامک را وارد کنید');
+                return;
+            }
+
             // ایجاد لیست شماره‌های معتبر یکتا
             const numberCount = {};
             phoneNumbers.forEach(number => {
                 numberCount[number] = (numberCount[number] || 0) + 1;
             });
-
             const correctNumbers = Object.keys(numberCount).filter(
                 number => number.length === 11 && number.startsWith('09')
             );
 
-            // تبدیل آرایه به رشته با جداکننده کاما (مطابق با انتظار AddNumberBulk)
+            if (correctNumbers.length === 0) {
+                showModal('هیچ شماره معتبری برای ارسال یافت نشد');
+                return;
+            }
+
+            // تبدیل آرایه به رشته با جداکننده کاما
             const numbersString = correctNumbers.join(',');
 
-            // تولید تاریخ فعلی با فرمت مورد نیاز
+            // استفاده از تاریخ سرور (بدون تبدیل timezone)
+            // فقط فرمت را درست کنیم
             const now = new Date();
-            const dateToSend = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+
+            const dateToSend = `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 
             // نمایش loading
             document.getElementById('loading').style.display = 'block';
 
             try {
                 const token = getUserToken();
-
                 if (!token) {
                     throw new Error('توکن احراز هویت یافت نشد');
                 }
 
-                console.log('Sending bulk SMS with:');
-                console.log('- Title:', title);
-                console.log('- Message length:', message.length);
-                console.log('- Numbers count:', correctNumbers.length);
-                console.log('- DateToSend:', dateToSend);
-                console.log('- Token:', token.substring(0, 10) + '...');
+                console.log('=== BULK SMS SEND ===');
+                console.log('Title:', title);
+                console.log('Message:', message);
+                console.log('Receivers count:', correctNumbers.length);
+                console.log('DateToSend:', dateToSend);
+                console.log('Server timezone will be used');
 
-                // استفاده از endpoint صحیح برای ارسال انبوه
+                // ارسال با تنظیمات مناسب برای encoding فارسی
+                const requestBody = {
+                    token: token,
+                    title: title, // بدون تغییر - سرور باید encoding را درست handle کند
+                    message: message, // بدون تغییر - سرور باید encoding را درست handle کند
+                    receivers: numbersString,
+                    DateToSend: dateToSend
+                };
+
                 const response = await fetch(`${apiBaseUrl}/add-bulk-with-token`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/json; charset=utf-8',
+                        'Accept': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({
-                        token: token,
-                        title: title,
-                        message: message,
-                        receivers: numbersString,
-                        dateToSend: dateToSend
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 console.log('Response status:', response.status);
 
                 if (!response.ok) {
                     const errorText = await response.text();
+                    console.error('Server error:', errorText);
                     throw new Error(`خطای سرور: ${response.status} - ${errorText}`);
                 }
 
                 const result = await response.json();
-                console.log('Bulk SMS response:', result);
+                console.log('API response:', result);
 
-                if (result && result.statusCode >= 0) {
-                    const sentCount = correctNumbers.length;
+                // بررسی پاسخ بر اساس کد سمت سرور
+                if (result && result.statusCode !== undefined) {
+                    const statusCode = result.statusCode;
 
-                    showSuccessModal(`
-                پیامک انبوه با موفقیت ارسال شد!<br>
-                تعداد شماره‌های ارسال شده: ${sentCount}<br>
-                زمان ارسال: ${dateToSend}<br><br>
-                ممکن است دقایقی زمان‌بر باشد تا پیامک انبوه شما به کاربران مورد نظر برسد.
-            `);
+                    if (statusCode >= 0) {
+                        // موفقیت - statusCode >= 0
+                        const sentCount = correctNumbers.length;
 
-                    // بروزرسانی موجودی کاربر
-                    await fetchUserCredit();
+                        showSuccessModal(`
+                    پیامک انبوه با موفقیت ارسال شد!<br>
+                    شناسه پیام: ${statusCode}<br>
+                    تعداد شماره‌های ارسال شده: ${sentCount}<br>
+                    زمان ارسال: ${dateToSend}<br><br>
+                    ممکن است دقایقی زمان‌بر باشد تا پیامک انبوه شما به کاربران مورد نظر برسد.
+                `);
+
+                        // پاک کردن فیلدها
+                        document.getElementById('title').value = '';
+                        document.getElementById('message').value = '';
+
+                        // بروزرسانی موجودی کاربر
+                        await fetchUserCredit();
+
+                    } else {
+                        // خطا - statusCode < 0
+                        let errorMessage = 'خطای نامشخص در ارسال';
+
+                        switch (statusCode) {
+                            case -1:
+                                errorMessage = 'خطا در احراز هویت یا موجودی کافی نیست';
+                                break;
+                            case -2:
+                                errorMessage = 'اعتبار کافی نیست';
+                                break;
+                            case -3:
+                                errorMessage = 'خطا در شماره فرستنده';
+                                break;
+                            case 4:
+                                errorMessage = 'خطا در فرمت تاریخ یا پارامترهای ارسال';
+                                break;
+                            default:
+                                errorMessage = result.rawResponse || `خطا با کد ${statusCode}`;
+                        }
+
+                        console.error('SMS send failed with status code:', statusCode);
+                        showModal(`خطا در ارسال پیامک انبوه:<br>${errorMessage}`);
+                    }
                 } else {
-                    const errorMsg = result?.rawResponse || 'خطای نامشخص در ارسال';
-                    showModal(`خطا در ارسال پیامک انبوه:<br>${errorMsg}`);
+                    console.error('Unexpected response format:', result);
+                    showModal('پاسخ غیرمنتظره از سرور دریافت شد');
                 }
+
             } catch (error) {
                 console.error('Error in sendBulkSMS:', error);
                 showModal(`خطا در ارسال پیامک انبوه:<br>${error.message}`);
