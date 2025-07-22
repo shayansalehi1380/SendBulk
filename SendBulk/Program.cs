@@ -26,6 +26,8 @@ builder.Services.Configure<FarapayamakSettings>(
 // اضافه کردن SmsService
 builder.Services.AddScoped<SmsService>();
 
+builder.Services.AddHostedService<BulkSmsStatusChecker>();
+
 // اضافه کردن HttpClient
 builder.Services.AddHttpClient();
 

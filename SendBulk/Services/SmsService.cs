@@ -369,6 +369,9 @@ namespace SendBulk.Services
                     return new { status = "error", error = "موجودی کیف پول کافی نمی‌باشد" };
                 }
 
+                // دریافت اطلاعات کاربر (شماره ادمین)
+                var userInfo = await GetFullUserInfoAsync(userId);
+
                 // شروع تراکنش دیتابیس
                 using (var connection = new SqlConnection(_connectionString))
                 {
@@ -377,10 +380,6 @@ namespace SendBulk.Services
 
                     try
                     {
-                        // ابتدا کسر از کیف پول مشتری
-                        await UpdateUserCreditWithTransactionAsync(userId, -totalCreditsRequired,
-                            "ارسال انبوه پیامک - در حال پردازش", validNumbers.Count, connection, transaction);
-
                         // ارسال انبوه
                         var receivers = string.Join(",", validNumbers);
                         var dateToSend = DateTime.Now.AddMinutes(1).ToString("yyyy/MM/dd HH:mm:ss");
@@ -408,8 +407,11 @@ namespace SendBulk.Services
 
                         if (responseResult.IsSuccess)
                         {
-                            // موفق - تایید تراکنش
-                            await UpdateUserCreditDescriptionAsync(userId, "ارسال انبوه پیامک - موفق", connection, transaction);
+                            // ذخیره اطلاعات bulk برای پیگیری وضعیت
+                            await SaveBulkSmsTracking(userId, responseResult.ResponseId, totalCreditsRequired,
+                                validNumbers.Count, title, message, userInfo.CellPhone, connection, transaction);
+
+                            // موفق - تایید تراکنش بدون کسر اعتبار (اعتبار بعداً بر اساس تایید نهایی کسر می‌شود)
                             transaction.Commit();
 
                             Console.WriteLine($"✅ BULK SMS SENT SUCCESSFULLY");
@@ -418,25 +420,24 @@ namespace SendBulk.Services
                             return new
                             {
                                 status = "success",
-                                statusCode = responseResult.StatusCode, // برای JavaScript
-                                msg = "پیامک انبوه با موفقیت ارسال شد",
+                                statusCode = responseResult.StatusCode,
+                                msg = "پیامک انبوه ارسال شد و در انتظار تایید نهایی است",
                                 data = new
                                 {
                                     sentTo = validNumbers.ToArray(),
                                     count = validNumbers.Count,
                                     pages = pages,
-                                    totalCreditsUsed = totalCreditsRequired,
+                                    totalCreditsReserved = totalCreditsRequired,
                                     scheduledTime = dateToSend,
-                                    responseId = responseResult.ResponseId
+                                    responseId = responseResult.ResponseId,
+                                    note = "اعتبار پس از تایید نهایی از فراپیامک کسر خواهد شد"
                                 }
                             };
                         }
                         else
                         {
-                            // خطا - برگشت اعتبار
-                            await UpdateUserCreditWithTransactionAsync(userId, totalCreditsRequired,
-                                $"برگشت اعتبار - خطا در ارسال: {responseResult.ErrorMessage}", validNumbers.Count, connection, transaction);
-                            transaction.Commit();
+                            // خطا - برگشت تراکنش
+                            transaction.Rollback();
 
                             Console.WriteLine($"❌ BULK SMS FAILED");
                             Console.WriteLine($"Error: {responseResult.ErrorMessage}");
@@ -445,7 +446,7 @@ namespace SendBulk.Services
                             return new
                             {
                                 status = "error",
-                                statusCode = responseResult.StatusCode, // برای JavaScript
+                                statusCode = responseResult.StatusCode,
                                 error = $"خطا در ارسال به فراپیامک: {responseResult.ErrorMessage}",
                                 rawResponse = responseResult.RawResponse
                             };
@@ -726,6 +727,52 @@ namespace SendBulk.Services
                 throw;
             }
         }
+
+        private async Task SaveBulkSmsTracking(int userId, string bulkId, decimal totalCredits,
+    int messageCount, string title, string message, string adminPhone,
+    SqlConnection connection, SqlTransaction transaction)
+        {
+            try
+            {
+                var query = @"
+        INSERT INTO [toranjdata_crm_2018].[dbo].[BulkSmsTracking] 
+        (BulkId, UserId, TotalCreditsUsed, MessageCount, AdminPhone, Title, MessageText, 
+         BodyParts, SentCount, FailedCount, DateSent, DateProcessed, Status, ResultMessage, OriginalXml)
+        VALUES 
+        (@BulkId, @UserId, @TotalCreditsUsed, @MessageCount, @AdminPhone, @Title, @MessageText, 
+         @BodyParts, @SentCount, @FailedCount, @DateSent, @DateProcessed, @Status, @ResultMessage, @OriginalXml)";
+
+                using var command = new SqlCommand(query, connection, transaction);
+                command.Parameters.AddWithValue("@BulkId", bulkId);
+                command.Parameters.AddWithValue("@UserId", userId);
+                command.Parameters.AddWithValue("@TotalCreditsUsed", totalCredits);
+                command.Parameters.AddWithValue("@MessageCount", messageCount);
+                command.Parameters.AddWithValue("@AdminPhone", adminPhone ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@Title", title ?? "");
+                command.Parameters.AddWithValue("@MessageText", message ?? "");
+
+                // فیلدهای جدید (مقداردهی اولیه)
+                command.Parameters.AddWithValue("@BodyParts", 1); // فرض پیش‌فرض
+                command.Parameters.AddWithValue("@SentCount", 0);
+                command.Parameters.AddWithValue("@FailedCount", 0);
+                command.Parameters.AddWithValue("@DateSent", DateTime.Now);
+                command.Parameters.AddWithValue("@DateProcessed", DBNull.Value); // هنوز ارسال نشده
+
+                command.Parameters.AddWithValue("@Status", 0); // وضعیت PENDING (عدد)
+                command.Parameters.AddWithValue("@ResultMessage", "در انتظار تایید از فراپیامک");
+                command.Parameters.AddWithValue("@OriginalXml", DBNull.Value); // اگر داری XML، اینجا بذار
+
+                await command.ExecuteNonQueryAsync();
+
+                Console.WriteLine($"Bulk SMS tracking saved for bulk ID: {bulkId}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"خطا در ذخیره tracking: {ex.Message}");
+                throw;
+            }
+        }
+
 
         // متد دریافت اطلاعات کامل کاربر
         private async Task<UserInfo> GetFullUserInfoAsync(int userId)
